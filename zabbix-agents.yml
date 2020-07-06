@@ -1,0 +1,78 @@
+---
+
+- name: Running playbook with a specified command
+  hosts: "{{ h_group }}"
+  become: yes
+
+  # PROXY IS OPTIONAL
+  pre_tasks:
+    - name: Change proxy in /etc/yum.conf
+      replace:
+        path: /etc/yum.conf
+        regexp: '^proxy=.*'
+        replace: 'proxy=<http/https/sock5...>://<proxy address>:<port>'
+
+
+  tasks:
+    - name: Check if zabbix-agent has already installed
+      command: yum list installed zabbix-agent
+      register: result
+      ignore_errors: True
+
+    - name: If zabbix is not installed
+      block:
+        - name: Install RPM
+        # PROXY IS OPTIONAL
+          shell: |
+            all_proxy=<http/https/sock5...>://<proxy address>:<port> rpm -Uvh https://repo.zabbix.com/zabbix/4.0/rhel/7/x86_64/zabbix-release-4.0-2.el7.noarch.rpm
+          ignore_errors: True
+        - name: Install zabbix-agent
+          yum:
+            name: zabbix-agent
+            state: latest
+        - name: Copy /etc/zabbix/zabbix_agentd.conf with .j2 {{ ansible_hostname }}
+          template:
+            src: ./zabbix_agentd.conf.j2
+            dest: /etc/zabbix/zabbix_agentd.conf
+            owner: root
+            group: root
+            mode: '0644'
+
+
+        - name: Restart zabbix-agent
+          systemd:
+            state: started
+            enabled: yes
+            name: zabbix-agent
+      when: result is failed
+
+
+    - name: If zabbix has been already installed
+      block:
+        - name: Copy /etc/zabbix/zabbix_agentd.conf with .j2 {{ ansible_hostname }}
+          template:
+            src: ./zabbix_agentd.conf.j2
+            dest: /etc/zabbix/zabbix_agentd.conf
+            owner: root
+            group: root
+            mode: '0644'
+        - name: Restart zabbix-agent
+          systemd:
+            state: restarted
+            name: zabbix-agent
+      when: result is succeeded
+
+
+    - name: Allow 10050 firewall port
+      firewalld:
+        port: 10050/tcp
+        permanent: yes
+        state: disabled
+
+  # PROXY IS OPTIONAL
+  post_tasks:
+    - name: Reverting file /etc/yum.conf
+      replace:
+        path: /etc/yum.conf
+        regexp: '^proxy=.*'
+        replace: 'proxy=http://10.100.150.9:3142'
