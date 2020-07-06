@@ -67,7 +67,9 @@
       firewalld:
         port: 10050/tcp
         permanent: yes
-        state: disabled
+        state: enabled
+      tags:
+        - firewall
 
   # PROXY IS OPTIONAL
   post_tasks:
